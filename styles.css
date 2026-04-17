@@ -997,6 +997,98 @@ input[type="range"]::-moz-range-thumb {
 .feed-status-dot.error { background: #ef4444; }
 .feed-status-dot.pending { background: var(--text-3); }
 
+/* ── Feed groups ───────────────────────────────────────── */
+
+.group-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  margin-top: 4px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  user-select: none;
+  font-size: .8rem;
+  font-weight: 600;
+  color: var(--text-2);
+  transition: background .15s;
+}
+
+.group-header:hover { background: var(--hover); }
+.group-header.active { background: var(--primary-light); color: var(--primary-dark); }
+
+.group-chevron { flex-shrink: 0; color: var(--text-3); }
+
+.group-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.group-rename-btn,
+.group-delete-btn {
+  display: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  align-items: center;
+  justify-content: center;
+  font-size: .7rem;
+  opacity: .7;
+  transition: opacity .15s, background .15s;
+  flex-shrink: 0;
+}
+
+.group-header:hover .group-rename-btn,
+.group-header:hover .group-delete-btn { display: flex; }
+
+.group-rename-btn { background: var(--text-3); color: var(--surface); }
+.group-rename-btn:hover { opacity: 1; background: var(--primary); }
+
+.group-delete-btn { background: var(--text-3); color: var(--surface); }
+.group-delete-btn:hover { opacity: 1; background: #ef4444; }
+
+.group-label {
+  font-size: .7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--text-3);
+  padding: 10px 12px 4px;
+}
+
+.feed-in-group { padding-left: 24px !important; }
+
+.feed-menu-btn {
+  display: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  align-items: center;
+  justify-content: center;
+  font-size: .95rem;
+  color: var(--text-3);
+  flex-shrink: 0;
+  transition: background .15s, color .15s;
+}
+
+.feed-item:hover .feed-menu-btn { display: flex; }
+.feed-menu-btn:hover { background: var(--hover); color: var(--text); }
+
+.feed-menu-popup {
+  position: fixed;
+  z-index: 500;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow-lg);
+  padding: 12px;
+  width: 210px;
+  animation: modal-in .15s ease;
+}
+
 /* ── View toggle ───────────────────────────────────────── */
 
 .view-toggle {

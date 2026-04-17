@@ -6,6 +6,7 @@ const STORAGE = {
   FEEDS: 'rss_feeds',
   ARTICLES: 'rss_articles',
   SETTINGS: 'rss_settings',
+  GROUPS: 'rss_groups',
 };
 
 const CORS_PROXIES = [
@@ -75,7 +76,24 @@ function makeFeed(url, name) {
     enabled: true,
     lastFetched: null,
     lastError: null,
+    groupId: null,
   };
+}
+
+// ── Group CRUD ────────────────────────────────────────
+
+function getGroups() { return load(STORAGE.GROUPS, []); }
+function saveGroups(g) { save(STORAGE.GROUPS, g); }
+function upsertGroup(group) {
+  const groups = getGroups();
+  const idx = groups.findIndex(g => g.id === group.id);
+  if (idx >= 0) groups[idx] = group; else groups.push(group);
+  saveGroups(groups);
+}
+function deleteGroup(id) {
+  const feeds = getFeeds().map(f => f.groupId === id ? { ...f, groupId: null } : f);
+  save(STORAGE.FEEDS, feeds);
+  saveGroups(getGroups().filter(g => g.id !== id));
 }
 
 // ── Article CRUD ──────────────────────────────────────────
@@ -537,45 +555,116 @@ const state = {
 
 function renderSidebar() {
   const feeds = getFeeds();
+  const groups = getGroups();
   const allUnread = unreadCount();
 
-  const feedList = document.getElementById('feed-list');
-  feedList.innerHTML = [
+  const renderFeedItem = (f, inGroup) => {
+    const n = unreadCount(f.id);
+    const icon = f.lastError ? '⚠️' : '📡';
+    return `
+      <div class="feed-item ${inGroup ? 'feed-in-group' : ''} ${state.filter === f.id ? 'active' : ''}" data-filter="${f.id}">
+        <span class="feed-icon">${icon}</span>
+        <span class="feed-name" title="${escHtml(f.url)}">${escHtml(f.name)}</span>
+        ${n ? `<span class="badge">${n}</span>` : ''}
+        <button class="feed-menu-btn" data-id="${f.id}" title="Optionen" aria-label="Feed-Optionen">⋮</button>
+      </div>
+      ${f.lastError ? `<div class="feed-error-hint" title="${escHtml(f.lastError)}">⚠ ${escHtml(f.lastError.slice(0, 40))}</div>` : ''}
+    `;
+  };
+
+  const ungroupedFeeds = feeds.filter(f => !f.groupId);
+  const hasAny = feeds.length > 0 || groups.length > 0;
+
+  const parts = [
     feedItem('all', '📰', 'Alle Artikel', allUnread),
     feedItem('unread', '🔵', 'Ungelesen', allUnread),
-    feeds.length ? '<div class="divider"></div>' : '',
-    ...feeds.map(f => {
-      const n = unreadCount(f.id);
-      const icon = f.lastError ? '⚠️' : '📡';
-      return `
-        <div class="feed-item ${state.filter === f.id ? 'active' : ''}" data-filter="${f.id}">
-          <span class="feed-icon">${icon}</span>
-          <span class="feed-name" title="${escHtml(f.url)}">${escHtml(f.name)}</span>
-          ${n ? `<span class="badge">${n}</span>` : ''}
-          <button class="feed-delete-btn" data-id="${f.id}" title="Feed löschen" aria-label="Feed löschen">×</button>
-        </div>
-        ${f.lastError ? `<div class="feed-error-hint" title="${escHtml(f.lastError)}">⚠ ${escHtml(f.lastError.slice(0, 40))}</div>` : ''}
-      `;
-    }),
-  ].join('');
+    hasAny ? '<div class="divider"></div>' : '',
+  ];
 
-  feedList.querySelectorAll('.feed-item').forEach(el => {
+  for (const g of groups) {
+    const groupFeeds = feeds.filter(f => f.groupId === g.id);
+    const groupUnread = groupFeeds.reduce((sum, f) => sum + unreadCount(f.id), 0);
+    const isActive = state.filter === `group:${g.id}`;
+    parts.push(`
+      <div class="group-header ${isActive ? 'active' : ''}" data-filter="group:${g.id}">
+        <svg class="group-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <polyline points="9 18 15 12 9 6"/>
+        </svg>
+        <span class="group-name">${escHtml(g.name)}</span>
+        ${groupUnread ? `<span class="badge">${groupUnread}</span>` : ''}
+        <button class="group-rename-btn" data-gid="${g.id}" title="Umbenennen">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+          </svg>
+        </button>
+        <button class="group-delete-btn" data-gid="${g.id}" title="Gruppe löschen">×</button>
+      </div>
+    `);
+    for (const f of groupFeeds) {
+      parts.push(renderFeedItem(f, true));
+    }
+  }
+
+  if (ungroupedFeeds.length > 0) {
+    if (groups.length > 0) {
+      parts.push('<div class="group-label">Ohne Gruppe</div>');
+    }
+    for (const f of ungroupedFeeds) {
+      parts.push(renderFeedItem(f, false));
+    }
+  }
+
+  parts.push('<div style="padding:8px 4px 4px"><button class="btn btn-ghost" id="btn-new-group" style="width:100%;justify-content:flex-start;font-size:.8rem;gap:6px">+ Neue Gruppe</button></div>');
+
+  const feedList = document.getElementById('feed-list');
+  feedList.innerHTML = parts.join('');
+
+  feedList.querySelectorAll('[data-filter]').forEach(el => {
     el.addEventListener('click', e => {
-      if (e.target.closest('.feed-delete-btn')) return;
+      if (e.target.closest('button')) return;
       setFilter(el.dataset.filter);
     });
   });
 
-  feedList.querySelectorAll('.feed-delete-btn').forEach(btn => {
+  feedList.querySelectorAll('.feed-menu-btn').forEach(btn => {
     btn.addEventListener('click', e => {
       e.stopPropagation();
-      const feed = getFeeds().find(f => f.id === btn.dataset.id);
-      if (!feed) return;
-      if (!confirm(`Feed "${feed.name}" löschen?\n\nAlle gespeicherten Artikel dieses Feeds werden ebenfalls gelöscht.`)) return;
-      deleteFeed(btn.dataset.id);
-      if (state.filter === btn.dataset.id) setFilter('all', false);
+      showFeedMenu(btn.dataset.id, btn);
+    });
+  });
+
+  feedList.querySelectorAll('.group-delete-btn').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      const gid = btn.dataset.gid;
+      const group = getGroups().find(g => g.id === gid);
+      if (!group) return;
+      if (!confirm(`Gruppe "${group.name}" löschen?\n\nDie Feeds bleiben erhalten und werden keiner Gruppe zugeordnet.`)) return;
+      if (state.filter === `group:${gid}`) setFilter('all', false);
+      deleteGroup(gid);
       renderAll();
     });
+  });
+
+  feedList.querySelectorAll('.group-rename-btn').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      const gid = btn.dataset.gid;
+      const group = getGroups().find(g => g.id === gid);
+      if (!group) return;
+      const name = prompt('Gruppenname:', group.name);
+      if (!name || !name.trim()) return;
+      upsertGroup({ ...group, name: name.trim() });
+      renderAll();
+    });
+  });
+
+  document.getElementById('btn-new-group')?.addEventListener('click', () => {
+    const name = prompt('Name der neuen Gruppe:');
+    if (!name || !name.trim()) return;
+    upsertGroup({ id: crypto.randomUUID(), name: name.trim() });
+    renderAll();
   });
 }
 
@@ -592,12 +681,25 @@ function feedItem(filter, icon, label, count) {
 function renderList() {
   let arts = getArticles();
 
-  if (state.filter === 'unread') arts = arts.filter(a => !a.read);
-  else if (state.filter !== 'all') arts = arts.filter(a => a.feedId === state.filter);
+  if (state.filter === 'unread') {
+    arts = arts.filter(a => !a.read);
+  } else if (state.filter.startsWith('group:')) {
+    const gid = state.filter.slice(6);
+    const feedIds = new Set(getFeeds().filter(f => f.groupId === gid).map(f => f.id));
+    arts = arts.filter(a => feedIds.has(a.feedId));
+  } else if (state.filter !== 'all') {
+    arts = arts.filter(a => a.feedId === state.filter);
+  }
 
-  const feed = getFeeds().find(f => f.id === state.filter);
-  const titles = { all: 'Alle Artikel', unread: 'Ungelesen' };
-  document.getElementById('list-title').textContent = titles[state.filter] ?? feed?.name ?? '';
+  let title = 'Alle Artikel';
+  if (state.filter === 'unread') title = 'Ungelesen';
+  else if (state.filter.startsWith('group:')) {
+    const gid = state.filter.slice(6);
+    title = getGroups().find(g => g.id === gid)?.name ?? 'Gruppe';
+  } else if (state.filter !== 'all') {
+    title = getFeeds().find(f => f.id === state.filter)?.name ?? '';
+  }
+  document.getElementById('list-title').textContent = title;
   document.getElementById('list-count').textContent = arts.length ? `${arts.length} Artikel` : '';
 
   const container = document.getElementById('articles-container');
@@ -672,6 +774,71 @@ function renderList() {
 function renderAll() {
   renderSidebar();
   renderList();
+}
+
+// ── Feed menu popup ───────────────────────────────────
+
+function closeFeedMenu() {
+  document.getElementById('feed-menu-popup')?.remove();
+}
+
+function showFeedMenu(feedId, anchorBtn) {
+  closeFeedMenu();
+  const feed = getFeeds().find(f => f.id === feedId);
+  if (!feed) return;
+  const groups = getGroups();
+
+  const menu = document.createElement('div');
+  menu.className = 'feed-menu-popup';
+  menu.id = 'feed-menu-popup';
+
+  const opts = groups.map(g =>
+    `<option value="${g.id}" ${feed.groupId === g.id ? 'selected' : ''}>${escHtml(g.name)}</option>`
+  ).join('');
+
+  menu.innerHTML = `
+    <div style="margin-bottom:8px">
+      <label style="display:block;font-size:.75rem;color:var(--text-3);margin-bottom:4px">Gruppe</label>
+      <select class="feed-group-select" style="width:100%;padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface-2);color:var(--text);font-size:.82rem;outline:none">
+        <option value="">Ohne Gruppe</option>
+        ${opts}
+      </select>
+    </div>
+    <button class="feed-menu-delete" style="width:100%;padding:6px 8px;font-size:.82rem;border-radius:6px;border:1px solid #fecaca;background:#fef2f2;color:#dc2626;cursor:pointer;text-align:left">🗑 Feed löschen</button>
+  `;
+
+  document.body.appendChild(menu);
+
+  // Position below anchor
+  const rect = anchorBtn.getBoundingClientRect();
+  menu.style.top = `${rect.bottom + 4}px`;
+  menu.style.left = `${rect.left}px`;
+  requestAnimationFrame(() => {
+    const mr = menu.getBoundingClientRect();
+    if (mr.right > window.innerWidth - 8) menu.style.left = `${window.innerWidth - mr.width - 8}px`;
+    if (mr.bottom > window.innerHeight - 8) menu.style.top = `${rect.top - mr.height - 4}px`;
+  });
+
+  menu.querySelector('.feed-group-select').addEventListener('change', e => {
+    const feeds = getFeeds();
+    const f = feeds.find(x => x.id === feedId);
+    if (f) { f.groupId = e.target.value || null; save(STORAGE.FEEDS, feeds); }
+    closeFeedMenu();
+    renderAll();
+  });
+
+  menu.querySelector('.feed-menu-delete').addEventListener('click', () => {
+    closeFeedMenu();
+    const f = getFeeds().find(x => x.id === feedId);
+    if (!f) return;
+    if (!confirm(`Feed "${f.name}" löschen?\n\nAlle gespeicherten Artikel dieses Feeds werden ebenfalls gelöscht.`)) return;
+    deleteFeed(feedId);
+    if (state.filter === feedId) setFilter('all', false);
+    renderAll();
+  });
+
+  // Close on outside click
+  setTimeout(() => document.addEventListener('click', closeFeedMenu, { once: true }), 10);
 }
 
 // ── Article reader ────────────────────────────────────────
@@ -809,6 +976,10 @@ function closeSidebar() {
 
 function showAddModal() {
   document.getElementById('add-feed-modal').classList.add('visible');
+  const groups = getGroups();
+  const sel = document.getElementById('feed-group');
+  sel.innerHTML = '<option value="">Ohne Gruppe</option>' +
+    groups.map(g => `<option value="${g.id}">${escHtml(g.name)}</option>`).join('');
   setTimeout(() => document.getElementById('feed-url').focus(), 50);
 }
 
@@ -816,6 +987,7 @@ function hideAddModal() {
   document.getElementById('add-feed-modal').classList.remove('visible');
   document.getElementById('feed-url').value = '';
   document.getElementById('feed-name').value = '';
+  document.getElementById('feed-group').value = '';
   document.getElementById('add-feed-error').textContent = '';
 }
 
@@ -889,6 +1061,7 @@ async function addFeed() {
   errEl.textContent = '';
 
   const feed = makeFeed(url, nameInput.value);
+  feed.groupId = document.getElementById('feed-group').value || null;
   try {
     const articles = await fetchFeed(feed);
     feed.lastFetched = new Date().toISOString();
@@ -984,7 +1157,17 @@ function bindEvents() {
 
   // Mark all read
   document.getElementById('btn-mark-all-read').addEventListener('click', () => {
-    markAllRead(state.filter === 'all' || state.filter === 'unread' ? null : state.filter);
+    if (state.filter === 'all' || state.filter === 'unread') {
+      markAllRead(null);
+    } else if (state.filter.startsWith('group:')) {
+      const gid = state.filter.slice(6);
+      const feedIds = new Set(getFeeds().filter(f => f.groupId === gid).map(f => f.id));
+      const arts = getArticles();
+      arts.forEach(a => { if (feedIds.has(a.feedId)) a.read = true; });
+      save(STORAGE.ARTICLES, arts);
+    } else {
+      markAllRead(state.filter);
+    }
     renderAll();
   });
 
