@@ -34,6 +34,7 @@ function getSettings() {
     checkInterval: 3_600_000,
     notifications: false,
     showImages: true,
+    autoFullArticle: false,
     fontSize: 16,
     listView: 'standard',
   });
@@ -738,7 +739,11 @@ function renderReader(article) {
   scroll.scrollTop = 0;
   panel.classList.add('has-article');
 
-  document.getElementById('btn-reader-mode')?.addEventListener('click', () => loadReader(article));
+  const modeBtn = document.getElementById('btn-reader-mode');
+  if (modeBtn) {
+    modeBtn.addEventListener('click', () => loadReader(article));
+    if (article.link && getSettings().autoFullArticle) loadReader(article);
+  }
 }
 
 async function loadReader(article) {
@@ -820,6 +825,7 @@ function showSettingsModal() {
   document.getElementById('setting-interval').value = s.checkInterval;
   document.getElementById('setting-notifications').checked = s.notifications;
   document.getElementById('setting-images').checked = s.showImages ?? true;
+  document.getElementById('setting-auto-full').checked = s.autoFullArticle ?? false;
   const fs = s.fontSize ?? 16;
   document.getElementById('setting-fontsize').value = fs;
   document.getElementById('fontsize-display').textContent = `${fs}px`;
@@ -914,10 +920,11 @@ async function applySettings() {
   }
 
   const showImages = document.getElementById('setting-images').checked;
+  const autoFullArticle = document.getElementById('setting-auto-full').checked;
   const fontSize = +document.getElementById('setting-fontsize').value;
 
   document.getElementById('notif-error').textContent = '';
-  saveSettings({ theme, checkInterval: interval, notifications: notif, showImages, fontSize });
+  saveSettings({ theme, checkInterval: interval, notifications: notif, showImages, autoFullArticle, fontSize });
   document.documentElement.setAttribute('data-theme', theme);
   applyFontSize(fontSize);
   hideSettingsModal();
