@@ -927,11 +927,11 @@ function rssIconSVG(size) {
 async function registerSW() {
   if (!('serviceWorker' in navigator)) return;
   try {
-    // Remember if a SW was already controlling this page before registration.
-    // controllerchange with hadController=true means an *update* happened → reload.
+    // Auto-reload when a new SW takes control of this page.
+    // hadController guards against reloading on the very first install
+    // (no previous controller = no update, page already has fresh content).
     const hadController = !!navigator.serviceWorker.controller;
     let reloading = false;
-
     navigator.serviceWorker.addEventListener('controllerchange', () => {
       if (hadController && !reloading) {
         reloading = true;
@@ -939,7 +939,19 @@ async function registerSW() {
       }
     });
 
-    const reg = await navigator.serviceWorker.register('./sw.js', { scope: './' });
+    // updateViaCache:'none' → browser always re-fetches sw.js from the network,
+    // never from the HTTP cache, so GitHub Pages' Cache-Control can't hide updates.
+    const reg = await navigator.serviceWorker.register('./sw.js', {
+      scope: './',
+      updateViaCache: 'none',
+    });
+
+    // Trigger a SW update check whenever the app is foregrounded.
+    // Without this, PWAs that are "resumed" (BFCache / app-switch on mobile)
+    // never get a navigation event, so the browser never checks for a new SW.
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') reg.update().catch(() => {});
+    });
 
     const s = getSettings();
     if (s.notifications && 'periodicSync' in reg) {

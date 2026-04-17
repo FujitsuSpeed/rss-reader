@@ -55,12 +55,16 @@ self.addEventListener('fetch', event => {
   );
 
   if (isHTML) {
-    // Network-first: guarantees fresh HTML after every update
+    // Network-first with cache:'no-cache' to bypass GitHub Pages' HTTP cache.
+    // Conditional GET (ETag) keeps it efficient — only downloads if changed.
+    const req = new Request(event.request, { cache: 'no-cache' });
     event.respondWith(
-      fetch(event.request)
+      fetch(req)
         .then(res => {
-          const clone = res.clone();
-          caches.open(CACHE_NAME).then(c => c.put(event.request, clone));
+          if (res.ok) {
+            const clone = res.clone();
+            caches.open(CACHE_NAME).then(c => c.put(event.request, clone));
+          }
           return res;
         })
         .catch(() => caches.match(event.request))
@@ -69,14 +73,17 @@ self.addEventListener('fetch', event => {
   }
 
   if (isShellAsset) {
-    // Stale-while-revalidate: serve cached instantly, refresh in background
+    // Stale-while-revalidate: instant from cache, silently refresh for next load.
+    // On first load after a SW update the cache is empty (old cache was deleted),
+    // so this falls through to a fresh network fetch automatically.
+    const req = new Request(event.request, { cache: 'no-cache' });
     event.respondWith(
       caches.open(CACHE_NAME).then(cache =>
         cache.match(event.request).then(cached => {
-          const networkFetch = fetch(event.request).then(res => {
-            cache.put(event.request, res.clone());
+          const networkFetch = fetch(req).then(res => {
+            if (res.ok) cache.put(event.request, res.clone());
             return res;
-          });
+          }).catch(() => cached);
           return cached ?? networkFetch;
         })
       )
