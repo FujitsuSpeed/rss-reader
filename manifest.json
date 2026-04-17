@@ -1,0 +1,46 @@
+{
+  "name": "RSS Reader",
+  "short_name": "RSS",
+  "description": "Browser-basierter RSS Feed Reader mit Offline-Support und Benachrichtigungen",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#3b82f6",
+  "orientation": "any",
+  "lang": "de",
+  "categories": ["news", "productivity"],
+  "icons": [
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-maskable.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Ungelesene Artikel",
+      "url": "./?filter=unread",
+      "description": "Zeige ungelesene Artikel"
+    }
+  ]
+}
