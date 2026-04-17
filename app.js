@@ -175,7 +175,7 @@ function plainText(html, max = 140) {
   return t.length > max ? t.slice(0, max).trimEnd() + '…' : t;
 }
 
-
+function parseXML(xml, feedId, feedName) {
   const doc = new DOMParser().parseFromString(xml, 'text/xml');
   if (doc.querySelector('parsererror')) throw new Error('Invalid XML');
 
