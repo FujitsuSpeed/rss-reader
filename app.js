@@ -306,10 +306,9 @@ const BOILERPLATE_PATTERNS = [
 
 function removeBoilerplate(root) {
   root.querySelectorAll('p, div, span, aside, section').forEach(el => {
-    if (el.children.length > 0) return; // only leaf / near-leaf nodes
+    if (!root.contains(el)) return; // already removed by a parent
     const text = el.textContent.trim();
-    if (!text) return;
-    if (text.length > 300) return; // keep real paragraphs
+    if (!text || text.length > 300) return;
     if (BOILERPLATE_PATTERNS.some(re => re.test(text))) el.remove();
   });
 }
