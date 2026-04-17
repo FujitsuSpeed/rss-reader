@@ -280,6 +280,40 @@ async function fetchAllFeeds() {
 
 // ── Reader Mode ───────────────────────────────────────────
 
+const BOILERPLATE_PATTERNS = [
+  /weiterlesen nach der anzeige/i,
+  /anzeige\s*$/i,
+  /\banzeige\b/i,
+  /this article is also available in english/i,
+  /it was translated with (technical|ai) assistance/i,
+  /editorially reviewed before publication/i,
+  /don'?t show this again/i,
+  /dieser artikel ist auch auf englisch/i,
+  /mit technischer unterst.tzung .bersetzt/i,
+  /vor der ver.ffentlichung redaktionell gepr.ft/i,
+  /nicht mehr anzeigen/i,
+  /jetzt (\d+ )?tage? gratis/i,
+  /jetzt abonnieren/i,
+  /zum newsletter anmelden/i,
+  /sie haben .+ artikel .brig/i,
+  /registrieren sie sich/i,
+  /article continues (below|after)/i,
+  /advertisement\s*$/i,
+  /sponsored content/i,
+  /scroll to continue/i,
+  /story continues below/i,
+];
+
+function removeBoilerplate(root) {
+  root.querySelectorAll('p, div, span, aside, section').forEach(el => {
+    if (el.children.length > 0) return; // only leaf / near-leaf nodes
+    const text = el.textContent.trim();
+    if (!text) return;
+    if (text.length > 300) return; // keep real paragraphs
+    if (BOILERPLATE_PATTERNS.some(re => re.test(text))) el.remove();
+  });
+}
+
 async function fetchReaderContent(url) {
   const { showImages } = getSettings();
   const html = await proxyFetch(url, 20_000);
@@ -339,6 +373,9 @@ async function fetchReaderContent(url) {
     el.setAttribute('target', '_blank');
     el.setAttribute('rel', 'noopener noreferrer');
   });
+
+  // Remove boilerplate phrases injected by publishers
+  removeBoilerplate(content);
 
   return sanitize(content.innerHTML);
 }
