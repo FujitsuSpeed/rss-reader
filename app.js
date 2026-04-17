@@ -561,12 +561,22 @@ function renderSidebar() {
   const renderFeedItem = (f, inGroup) => {
     const n = unreadCount(f.id);
     const icon = f.lastError ? '⚠️' : '📡';
+    const groupOpts = groups.map(g =>
+      `<option value="${g.id}" ${f.groupId === g.id ? 'selected' : ''}>${escHtml(g.name)}</option>`
+    ).join('');
     return `
       <div class="feed-item ${inGroup ? 'feed-in-group' : ''} ${state.filter === f.id ? 'active' : ''}" data-filter="${f.id}">
         <span class="feed-icon">${icon}</span>
         <span class="feed-name" title="${escHtml(f.url)}">${escHtml(f.name)}</span>
         ${n ? `<span class="badge">${n}</span>` : ''}
         <button class="feed-menu-btn" data-id="${f.id}" title="Optionen" aria-label="Feed-Optionen">⋮</button>
+      </div>
+      <div class="feed-options" id="feed-opts-${f.id}">
+        <select class="feed-group-select" data-fid="${f.id}">
+          <option value="">Ohne Gruppe</option>
+          ${groupOpts}
+        </select>
+        <button class="feed-opts-delete" data-fid="${f.id}" title="Feed löschen">🗑</button>
       </div>
       ${f.lastError ? `<div class="feed-error-hint" title="${escHtml(f.lastError)}">⚠ ${escHtml(f.lastError.slice(0, 40))}</div>` : ''}
     `;
@@ -630,7 +640,32 @@ function renderSidebar() {
   feedList.querySelectorAll('.feed-menu-btn').forEach(btn => {
     btn.addEventListener('click', e => {
       e.stopPropagation();
-      showFeedMenu(btn.dataset.id, btn);
+      const panel = document.getElementById(`feed-opts-${btn.dataset.id}`);
+      const isOpen = panel.classList.contains('open');
+      feedList.querySelectorAll('.feed-options.open').forEach(el => el.classList.remove('open'));
+      if (!isOpen) panel.classList.add('open');
+    });
+  });
+
+  feedList.querySelectorAll('.feed-group-select').forEach(sel => {
+    sel.addEventListener('change', () => {
+      const feeds = getFeeds();
+      const f = feeds.find(x => x.id === sel.dataset.fid);
+      if (f) { f.groupId = sel.value || null; save(STORAGE.FEEDS, feeds); }
+      renderAll();
+    });
+  });
+
+  feedList.querySelectorAll('.feed-opts-delete').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      const id = btn.dataset.fid;
+      const f = getFeeds().find(x => x.id === id);
+      if (!f) return;
+      if (!confirm(`Feed "${f.name}" löschen?\n\nAlle gespeicherten Artikel dieses Feeds werden ebenfalls gelöscht.`)) return;
+      deleteFeed(id);
+      if (state.filter === id) setFilter('all', false);
+      renderAll();
     });
   });
 
@@ -774,71 +809,6 @@ function renderList() {
 function renderAll() {
   renderSidebar();
   renderList();
-}
-
-// ── Feed menu popup ───────────────────────────────────
-
-function closeFeedMenu() {
-  document.getElementById('feed-menu-popup')?.remove();
-}
-
-function showFeedMenu(feedId, anchorBtn) {
-  closeFeedMenu();
-  const feed = getFeeds().find(f => f.id === feedId);
-  if (!feed) return;
-  const groups = getGroups();
-
-  const menu = document.createElement('div');
-  menu.className = 'feed-menu-popup';
-  menu.id = 'feed-menu-popup';
-
-  const opts = groups.map(g =>
-    `<option value="${g.id}" ${feed.groupId === g.id ? 'selected' : ''}>${escHtml(g.name)}</option>`
-  ).join('');
-
-  menu.innerHTML = `
-    <div style="margin-bottom:8px">
-      <label style="display:block;font-size:.75rem;color:var(--text-3);margin-bottom:4px">Gruppe</label>
-      <select class="feed-group-select" style="width:100%;padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface-2);color:var(--text);font-size:.82rem;outline:none">
-        <option value="">Ohne Gruppe</option>
-        ${opts}
-      </select>
-    </div>
-    <button class="feed-menu-delete" style="width:100%;padding:6px 8px;font-size:.82rem;border-radius:6px;border:1px solid #fecaca;background:#fef2f2;color:#dc2626;cursor:pointer;text-align:left">🗑 Feed löschen</button>
-  `;
-
-  document.body.appendChild(menu);
-
-  // Position below anchor
-  const rect = anchorBtn.getBoundingClientRect();
-  menu.style.top = `${rect.bottom + 4}px`;
-  menu.style.left = `${rect.left}px`;
-  requestAnimationFrame(() => {
-    const mr = menu.getBoundingClientRect();
-    if (mr.right > window.innerWidth - 8) menu.style.left = `${window.innerWidth - mr.width - 8}px`;
-    if (mr.bottom > window.innerHeight - 8) menu.style.top = `${rect.top - mr.height - 4}px`;
-  });
-
-  menu.querySelector('.feed-group-select').addEventListener('change', e => {
-    const feeds = getFeeds();
-    const f = feeds.find(x => x.id === feedId);
-    if (f) { f.groupId = e.target.value || null; save(STORAGE.FEEDS, feeds); }
-    closeFeedMenu();
-    renderAll();
-  });
-
-  menu.querySelector('.feed-menu-delete').addEventListener('click', () => {
-    closeFeedMenu();
-    const f = getFeeds().find(x => x.id === feedId);
-    if (!f) return;
-    if (!confirm(`Feed "${f.name}" löschen?\n\nAlle gespeicherten Artikel dieses Feeds werden ebenfalls gelöscht.`)) return;
-    deleteFeed(feedId);
-    if (state.filter === feedId) setFilter('all', false);
-    renderAll();
-  });
-
-  // Close on outside click
-  setTimeout(() => document.addEventListener('click', closeFeedMenu, { once: true }), 10);
 }
 
 // ── Article reader ────────────────────────────────────────

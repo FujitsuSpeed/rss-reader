@@ -1062,9 +1062,9 @@ input[type="range"]::-moz-range-thumb {
 .feed-in-group { padding-left: 24px !important; }
 
 .feed-menu-btn {
-  display: none;
-  width: 20px;
-  height: 20px;
+  display: flex;
+  width: 24px;
+  height: 24px;
   border-radius: 4px;
   align-items: center;
   justify-content: center;
@@ -1074,19 +1074,42 @@ input[type="range"]::-moz-range-thumb {
   transition: background .15s, color .15s;
 }
 
-.feed-item:hover .feed-menu-btn { display: flex; }
 .feed-menu-btn:hover { background: var(--hover); color: var(--text); }
 
-.feed-menu-popup {
-  position: fixed;
-  z-index: 500;
-  background: var(--surface);
+.feed-options {
+  display: none;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px 6px 20px;
+  background: var(--bg);
+  border-radius: 0 0 var(--radius) var(--radius);
+  margin-top: -2px;
+  margin-bottom: 4px;
+}
+
+.feed-options.open { display: flex; }
+
+.feed-options select {
+  flex: 1;
+  min-width: 0;
+  padding: 5px 8px;
   border: 1px solid var(--border);
-  border-radius: 10px;
-  box-shadow: var(--shadow-lg);
-  padding: 12px;
-  width: 200px;
-  animation: modal-in .15s ease;
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: .82rem;
+  outline: none;
+}
+
+.feed-opts-delete {
+  padding: 5px 8px;
+  border-radius: 6px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #dc2626;
+  font-size: .85rem;
+  cursor: pointer;
+  flex-shrink: 0;
 }
 
 /* ── View toggle ───────────────────────────────────────── */
