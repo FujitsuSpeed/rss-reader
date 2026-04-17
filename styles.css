@@ -659,6 +659,16 @@ input, select {
   max-width: 440px;
   overflow: hidden;
   animation: modal-in .2s ease;
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100dvh - 32px);
+}
+
+.modal-body {
+  padding: 20px;
+  flex: 1;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 @keyframes modal-in {
@@ -676,7 +686,6 @@ input, select {
 
 .modal-header h2 { font-size: 1.05rem; font-weight: 600; }
 
-.modal-body { padding: 20px; }
 
 .modal-footer {
   display: flex;
