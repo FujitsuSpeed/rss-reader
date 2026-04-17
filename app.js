@@ -115,29 +115,34 @@ function unreadCount(feedId) {
 // ── Network / CORS proxy ──────────────────────────────────
 
 async function proxyFetch(url, timeout = 12_000) {
-  // Race all proxies in parallel — fastest wins, others get cancelled
+  // Race all proxies in parallel — first to deliver full text wins.
+  // Body must be read INSIDE each attempt so we can safely abort the
+  // other controllers afterwards (aborting a signal after fetch() resolves
+  // but before res.text() completes would cancel the body read).
   const controllers = CORS_PROXIES.map(() => new AbortController());
   const deadline = AbortSignal.timeout(timeout);
-
   deadline.addEventListener('abort', () => controllers.forEach(c => c.abort()), { once: true });
 
   const combine = i =>
-    AbortSignal.any
+    typeof AbortSignal.any === 'function'
       ? AbortSignal.any([controllers[i].signal, deadline])
       : controllers[i].signal;
 
   const attempts = CORS_PROXIES.map(async (buildUrl, i) => {
     const res = await fetch(buildUrl(url), { signal: combine(i) });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return res;
+    return res.text(); // read body while signal is still active
   });
 
   try {
-    const result = await Promise.any(attempts);
-    controllers.forEach(c => c.abort()); // cancel losers
-    return result;
-  } catch {
-    throw new Error('Alle Proxies fehlgeschlagen');
+    const text = await Promise.any(attempts);
+    controllers.forEach(c => c.abort()); // now safe to cancel in-flight losers
+    return text;
+  } catch (err) {
+    const msgs = err instanceof AggregateError
+      ? err.errors.map(e => e.message).join(' | ')
+      : err.message;
+    throw new Error(`Alle Proxies fehlgeschlagen: ${msgs}`);
   }
 }
 
@@ -203,8 +208,7 @@ function parseXML(xml, feedId, feedName) {
 }
 
 async function fetchFeed(feed) {
-  const res = await proxyFetch(feed.url);
-  const xml = await res.text();
+  const xml = await proxyFetch(feed.url);
   return parseXML(xml, feed.id, feed.name);
 }
 
@@ -236,8 +240,7 @@ async function fetchAllFeeds() {
 
 async function fetchReaderContent(url) {
   const { showImages } = getSettings();
-  const res = await proxyFetch(url, 20_000);
-  const html = await res.text();
+  const html = await proxyFetch(url, 20_000);
   const doc = new DOMParser().parseFromString(html, 'text/html');
 
   // Remove noise
