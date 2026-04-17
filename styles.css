@@ -1068,7 +1068,7 @@ input[type="range"]::-moz-range-thumb {
   border-radius: 4px;
   align-items: center;
   justify-content: center;
-  font-size: .95rem;
+  font-size: .9rem;
   color: var(--text-3);
   flex-shrink: 0;
   transition: background .15s, color .15s;
@@ -1085,7 +1085,7 @@ input[type="range"]::-moz-range-thumb {
   border-radius: 10px;
   box-shadow: var(--shadow-lg);
   padding: 12px;
-  width: 210px;
+  width: 200px;
   animation: modal-in .15s ease;
 }
 
