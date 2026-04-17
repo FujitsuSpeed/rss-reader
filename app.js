@@ -33,6 +33,7 @@ function getSettings() {
     theme: 'auto',
     checkInterval: 3_600_000,
     notifications: false,
+    showImages: true,
   });
 }
 
@@ -114,14 +115,30 @@ function unreadCount(feedId) {
 // ── Network / CORS proxy ──────────────────────────────────
 
 async function proxyFetch(url, timeout = 12_000) {
-  let lastErr;
-  for (const buildUrl of CORS_PROXIES) {
-    try {
-      const res = await fetch(buildUrl(url), { signal: AbortSignal.timeout(timeout) });
-      if (res.ok) return res;
-    } catch (e) { lastErr = e; }
+  // Race all proxies in parallel — fastest wins, others get cancelled
+  const controllers = CORS_PROXIES.map(() => new AbortController());
+  const deadline = AbortSignal.timeout(timeout);
+
+  deadline.addEventListener('abort', () => controllers.forEach(c => c.abort()), { once: true });
+
+  const combine = i =>
+    AbortSignal.any
+      ? AbortSignal.any([controllers[i].signal, deadline])
+      : controllers[i].signal;
+
+  const attempts = CORS_PROXIES.map(async (buildUrl, i) => {
+    const res = await fetch(buildUrl(url), { signal: combine(i) });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res;
+  });
+
+  try {
+    const result = await Promise.any(attempts);
+    controllers.forEach(c => c.abort()); // cancel losers
+    return result;
+  } catch {
+    throw new Error('Alle Proxies fehlgeschlagen');
   }
-  throw lastErr ?? new Error('All proxies failed');
 }
 
 // ── RSS / Atom Parser ─────────────────────────────────────
@@ -218,6 +235,7 @@ async function fetchAllFeeds() {
 // ── Reader Mode ───────────────────────────────────────────
 
 async function fetchReaderContent(url) {
+  const { showImages } = getSettings();
   const res = await proxyFetch(url, 20_000);
   const html = await res.text();
   const doc = new DOMParser().parseFromString(html, 'text/html');
@@ -229,6 +247,15 @@ async function fetchReaderContent(url) {
     '.newsletter', '.subscribe', '.social', '.related', '.comments',
     '#comments', '[role="complementary"]', '[aria-label*="dvertis"]',
   ].forEach(sel => doc.querySelectorAll(sel).forEach(el => el.remove()));
+
+  // Strip images early when disabled (speeds up parsing + sanitize)
+  if (!showImages) {
+    doc.querySelectorAll('img, picture, source, svg').forEach(el => el.remove());
+    doc.querySelectorAll('figure').forEach(fig => {
+      const cap = fig.querySelector('figcaption');
+      fig.replaceWith(cap ?? document.createTextNode(''));
+    });
+  }
 
   // Find main content block
   const candidates = [
@@ -244,22 +271,28 @@ async function fetchReaderContent(url) {
   }
   content = content ?? doc.body;
 
-  // Fix asset URLs
-  content.querySelectorAll('[src]').forEach(el => {
-    const src = el.getAttribute('src');
-    if (src && !src.startsWith('http') && !src.startsWith('data:')) {
-      try { el.setAttribute('src', new URL(src, url).href); } catch {}
-    }
-  });
+  if (showImages) {
+    // Fix relative image URLs and remove tracking pixels
+    content.querySelectorAll('img').forEach(img => {
+      if (+img.width === 1 || +img.height === 1) { img.remove(); return; }
+      const src = img.getAttribute('src');
+      if (src && !src.startsWith('http') && !src.startsWith('data:')) {
+        try { img.setAttribute('src', new URL(src, url).href); } catch {}
+      }
+    });
+    content.querySelectorAll('source').forEach(src => {
+      const s = src.getAttribute('srcset') || src.getAttribute('src');
+      if (s && !s.startsWith('http') && !s.startsWith('data:')) {
+        try {
+          src.setAttribute('srcset', new URL(s.split(' ')[0], url).href);
+        } catch {}
+      }
+    });
+  }
 
   content.querySelectorAll('[href]').forEach(el => {
     el.setAttribute('target', '_blank');
     el.setAttribute('rel', 'noopener noreferrer');
-  });
-
-  // Remove 1px tracking images
-  content.querySelectorAll('img').forEach(img => {
-    if (+img.width === 1 || +img.height === 1) img.remove();
   });
 
   return sanitize(content.innerHTML);
@@ -283,6 +316,11 @@ const SAFE_ATTRS = {
 };
 
 function sanitize(html) {
+  const showImages = getSettings().showImages;
+  const allowedTags = showImages ? SAFE_TAGS : new Set(
+    [...SAFE_TAGS].filter(t => !['img', 'picture', 'source', 'figure', 'figcaption'].includes(t))
+  );
+
   const doc = new DOMParser().parseFromString(html, 'text/html');
 
   function walk(node) {
@@ -290,7 +328,13 @@ function sanitize(html) {
     if (node.nodeType !== Node.ELEMENT_NODE) { node.remove(); return; }
 
     const tag = node.tagName.toLowerCase();
-    if (!SAFE_TAGS.has(tag)) {
+
+    // When images disabled, drop media tags entirely (keep figcaption text)
+    if (!showImages && ['img', 'picture', 'source', 'svg'].includes(tag)) {
+      node.remove(); return;
+    }
+
+    if (!allowedTags.has(tag)) {
       const frag = document.createDocumentFragment();
       [...node.childNodes].forEach(c => { walk(c); frag.appendChild(c); });
       node.replaceWith(frag);
@@ -656,6 +700,7 @@ function showSettingsModal() {
   document.getElementById('setting-theme').value = s.theme;
   document.getElementById('setting-interval').value = s.checkInterval;
   document.getElementById('setting-notifications').checked = s.notifications;
+  document.getElementById('setting-images').checked = s.showImages ?? true;
   document.getElementById('settings-modal').classList.add('visible');
 }
 
@@ -743,8 +788,10 @@ async function applySettings() {
     return;
   }
 
+  const showImages = document.getElementById('setting-images').checked;
+
   document.getElementById('notif-error').textContent = '';
-  saveSettings({ theme, checkInterval: interval, notifications: notif });
+  saveSettings({ theme, checkInterval: interval, notifications: notif, showImages });
   document.documentElement.setAttribute('data-theme', theme);
   hideSettingsModal();
   syncSWConfig();
