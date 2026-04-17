@@ -924,16 +924,19 @@ function rssIconSVG(size) {
 async function registerSW() {
   if (!('serviceWorker' in navigator)) return;
   try {
-    const reg = await navigator.serviceWorker.register('./sw.js', { scope: './' });
+    // Remember if a SW was already controlling this page before registration.
+    // controllerchange with hadController=true means an *update* happened → reload.
+    const hadController = !!navigator.serviceWorker.controller;
+    let reloading = false;
 
-    reg.addEventListener('updatefound', () => {
-      const sw = reg.installing;
-      sw.addEventListener('statechange', () => {
-        if (sw.state === 'installed' && navigator.serviceWorker.controller) {
-          showUpdateBanner(reg);
-        }
-      });
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (hadController && !reloading) {
+        reloading = true;
+        window.location.reload();
+      }
     });
+
+    const reg = await navigator.serviceWorker.register('./sw.js', { scope: './' });
 
     const s = getSettings();
     if (s.notifications && 'periodicSync' in reg) {
@@ -945,17 +948,6 @@ async function registerSW() {
   } catch (e) {
     console.warn('SW registration failed:', e);
   }
-}
-
-function showUpdateBanner(reg) {
-  const banner = document.createElement('div');
-  banner.className = 'update-banner';
-  banner.innerHTML = `<span>Neue Version verfügbar.</span><button>Aktualisieren</button>`;
-  banner.querySelector('button').addEventListener('click', () => {
-    reg.waiting?.postMessage({ type: 'SKIP_WAITING' });
-    window.location.reload();
-  });
-  document.body.appendChild(banner);
 }
 
 // ── Init ──────────────────────────────────────────────────

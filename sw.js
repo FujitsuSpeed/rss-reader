@@ -1,6 +1,6 @@
 'use strict';
 
-const CACHE_NAME = 'rss-reader-v1';
+const CACHE_NAME = 'rss-reader-v2';
 const APP_SHELL = [
   './',
   './index.html',
@@ -38,28 +38,53 @@ self.addEventListener('activate', event => {
   self.clients.claim();
 });
 
-// ── Fetch (Cache-first for app shell, network-first for rest) ──
+// ── Fetch ──────────────────────────────────────────────────
+//
+// HTML  → network-first  (always fresh; offline falls back to cache)
+// JS/CSS/icons → stale-while-revalidate  (instant load, silent background update)
+// everything else → network-first
 
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
 
   if (event.request.method !== 'GET') return;
 
-  // App shell → cache first
-  if (APP_SHELL.some(path => url.pathname.endsWith(path.replace('./', '')))) {
+  const isHTML = url.pathname.endsWith('.html') || url.pathname.endsWith('/');
+  const isShellAsset = !isHTML && APP_SHELL.some(
+    p => url.pathname.endsWith(p.replace('./', ''))
+  );
+
+  if (isHTML) {
+    // Network-first: guarantees fresh HTML after every update
     event.respondWith(
-      caches.match(event.request).then(cached =>
-        cached || fetch(event.request).then(response => {
-          const clone = response.clone();
-          caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
-          return response;
+      fetch(event.request)
+        .then(res => {
+          const clone = res.clone();
+          caches.open(CACHE_NAME).then(c => c.put(event.request, clone));
+          return res;
+        })
+        .catch(() => caches.match(event.request))
+    );
+    return;
+  }
+
+  if (isShellAsset) {
+    // Stale-while-revalidate: serve cached instantly, refresh in background
+    event.respondWith(
+      caches.open(CACHE_NAME).then(cache =>
+        cache.match(event.request).then(cached => {
+          const networkFetch = fetch(event.request).then(res => {
+            cache.put(event.request, res.clone());
+            return res;
+          });
+          return cached ?? networkFetch;
         })
       )
     );
     return;
   }
 
-  // Network first for everything else
+  // Everything else → network-first
   event.respondWith(
     fetch(event.request).catch(() => caches.match(event.request))
   );
