@@ -39,7 +39,12 @@ function getSettings() {
 }
 
 function applyFontSize(px) {
+  // Set CSS variable for future elements created via innerHTML
   document.documentElement.style.setProperty('--reader-font-size', `${px}px`);
+  // Also update the live element directly — CSS variable cascade can be unreliable
+  // when elements are replaced via innerHTML after the variable was already set
+  const el = document.getElementById('reader-body');
+  if (el) el.style.fontSize = `${px}px`;
 }
 
 function saveSettings(s) { save(STORAGE.SETTINGS, s); }
@@ -624,6 +629,10 @@ function renderReader(article) {
     </div>
   `;
 
+  // Apply font size to the freshly created element (innerHTML replaces the old one)
+  const readerBody = document.getElementById('reader-body');
+  if (readerBody) readerBody.style.fontSize = `${getSettings().fontSize ?? 16}px`;
+
   scroll.scrollTop = 0;
   panel.classList.add('has-article');
 
@@ -712,6 +721,7 @@ function showSettingsModal() {
   const fs = s.fontSize ?? 16;
   document.getElementById('setting-fontsize').value = fs;
   document.getElementById('fontsize-display').textContent = `${fs}px`;
+  document.getElementById('fontsize-preview').style.fontSize = `${fs}px`;
   document.getElementById('settings-modal').classList.add('visible');
 }
 
@@ -869,6 +879,7 @@ function bindEvents() {
   document.getElementById('setting-fontsize').addEventListener('input', e => {
     const px = +e.target.value;
     document.getElementById('fontsize-display').textContent = `${px}px`;
+    document.getElementById('fontsize-preview').style.fontSize = `${px}px`;
     applyFontSize(px);
   });
 
