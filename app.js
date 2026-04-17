@@ -35,6 +35,7 @@ function getSettings() {
     notifications: false,
     showImages: true,
     fontSize: 16,
+    listView: 'standard',
   });
 }
 
@@ -158,7 +159,23 @@ async function proxyFetch(url, timeout = 12_000) {
 
 // ── RSS / Atom Parser ─────────────────────────────────────
 
-function parseXML(xml, feedId, feedName) {
+function extractFirstImage(html) {
+  if (!html) return null;
+  const m = html.match(/<img[^>]+?src=["']([^"'>]+)["']/i);
+  if (!m) return null;
+  const src = m[1];
+  if (/1x1|pixel|tracking|beacon|spacer/i.test(src)) return null;
+  return src;
+}
+
+function plainText(html, max = 140) {
+  const d = document.createElement('div');
+  d.innerHTML = html;
+  const t = d.textContent.trim().replace(/\s+/g, ' ');
+  return t.length > max ? t.slice(0, max).trimEnd() + '…' : t;
+}
+
+
   const doc = new DOMParser().parseFromString(xml, 'text/xml');
   if (doc.querySelector('parsererror')) throw new Error('Invalid XML');
 
@@ -177,14 +194,21 @@ function parseXML(xml, feedId, feedName) {
       const guid = get(e, 'id') || link;
       if (!guid) return;
 
+      const desc = get(e, 'summary') || get(e, 'content') || '';
+      const cont = get(e, 'content') || '';
+      const thumb =
+        e.querySelector('thumbnail')?.getAttribute('url') ||
+        extractFirstImage(cont || desc);
+
       items.push({
         id: `${feedId}_${hash(guid)}`,
         feedId,
         feedName,
         title: htmlText(get(e, 'title') || 'Untitled'),
         link: link || '',
-        description: get(e, 'summary') || get(e, 'content') || '',
-        content: get(e, 'content') || '',
+        description: desc,
+        content: cont,
+        thumbnail: thumb || null,
         pubDate: get(e, 'updated') || get(e, 'published') || new Date().toISOString(),
         read: false,
       });
@@ -199,6 +223,13 @@ function parseXML(xml, feedId, feedName) {
       const contentEl =
         item.querySelector('content\\:encoded') ||
         item.querySelector('encoded');
+      const description = get(item, 'description') || '';
+      const content = contentEl?.textContent?.trim() || '';
+
+      const thumb =
+        item.querySelector('thumbnail')?.getAttribute('url') ||
+        item.querySelector('enclosure[type^="image"]')?.getAttribute('url') ||
+        extractFirstImage(content || description);
 
       items.push({
         id: `${feedId}_${hash(guid)}`,
@@ -206,8 +237,9 @@ function parseXML(xml, feedId, feedName) {
         feedName,
         title: htmlText(get(item, 'title') || 'Untitled'),
         link: link || '',
-        description: get(item, 'description') || '',
-        content: contentEl?.textContent?.trim() || '',
+        description,
+        content,
+        thumbnail: thumb || null,
         pubDate: get(item, 'pubDate') || new Date().toISOString(),
         read: false,
       });
@@ -461,6 +493,7 @@ const state = {
   filter: 'all',
   selectedId: null,
   loading: false,
+  listView: getSettings().listView ?? 'standard',
 };
 
 // ── Render helpers ────────────────────────────────────────
@@ -546,19 +579,52 @@ function renderList() {
     return;
   }
 
-  container.innerHTML = arts.map(a => `
-    <div class="article-item ${a.read ? '' : 'unread'} ${state.selectedId === a.id ? 'selected' : ''}"
-         data-id="${a.id}" role="button" tabindex="0" aria-label="${escHtml(a.title)}">
-      <div class="article-item-inner">
-        <div class="article-item-title">${escHtml(a.title)}</div>
-        <div class="article-item-meta">
-          <span class="article-feed">${escHtml(a.feedName)}</span>
-          <span class="article-date">${relTime(a.pubDate)}</span>
+  const view = state.listView;
+  container.dataset.view = view;
+
+  container.innerHTML = arts.map(a => {
+    const cls = `article-item ${a.read ? '' : 'unread'} ${state.selectedId === a.id ? 'selected' : ''}`;
+    const meta = `<div class="article-item-meta">
+        <span class="article-feed">${escHtml(a.feedName)}</span>
+        <span class="article-date">${relTime(a.pubDate)}</span>
+      </div>`;
+    const dot = !a.read ? '<div class="unread-dot" aria-hidden="true"></div>' : '';
+
+    if (view === 'compact') {
+      return `
+        <div class="${cls}" data-id="${a.id}" role="button" tabindex="0">
+          <div class="article-item-inner">
+            <div class="article-item-title">${escHtml(a.title)}</div>
+            ${meta}
+          </div>
+          ${dot}
+        </div>`;
+    }
+
+    if (view === 'card' && a.thumbnail) {
+      return `
+        <div class="${cls}" data-id="${a.id}" role="button" tabindex="0">
+          <img class="article-thumb" src="${escHtml(a.thumbnail)}" alt="" loading="lazy" decoding="async">
+          <div class="article-item-inner">
+            <div class="article-item-title">${escHtml(a.title)}</div>
+            <div class="article-excerpt">${escHtml(plainText(a.description || a.content))}</div>
+            ${meta}
+          </div>
+          ${dot}
+        </div>`;
+    }
+
+    // 'standard' (and 'card' without thumbnail)
+    return `
+      <div class="${cls}" data-id="${a.id}" role="button" tabindex="0">
+        <div class="article-item-inner">
+          <div class="article-item-title">${escHtml(a.title)}</div>
+          <div class="article-excerpt">${escHtml(plainText(a.description || a.content))}</div>
+          ${meta}
         </div>
-      </div>
-      ${!a.read ? '<div class="unread-dot" aria-hidden="true"></div>' : ''}
-    </div>
-  `).join('');
+        ${dot}
+      </div>`;
+  }).join('');
 
   container.querySelectorAll('.article-item').forEach(el => {
     el.addEventListener('click', () => openArticle(el.dataset.id));
@@ -860,6 +926,19 @@ function bindEvents() {
   // Reader back
   document.getElementById('btn-reader-back').addEventListener('click', closeReader);
 
+  // View toggle
+  document.querySelectorAll('.view-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const v = btn.dataset.view;
+      state.listView = v;
+      const s = getSettings();
+      s.listView = v;
+      localStorage.setItem('rss-settings', JSON.stringify(s));
+      document.querySelectorAll('.view-btn').forEach(b => b.classList.toggle('active', b.dataset.view === v));
+      renderList();
+    });
+  });
+
   // Mark all read
   document.getElementById('btn-mark-all-read').addEventListener('click', () => {
     markAllRead(state.filter === 'all' || state.filter === 'unread' ? null : state.filter);
@@ -1005,6 +1084,13 @@ async function init() {
 
   await registerSW();
   bindEvents();
+
+  // Sync view toggle buttons with persisted setting
+  const savedView = s0.listView ?? 'standard';
+  document.querySelectorAll('.view-btn').forEach(b =>
+    b.classList.toggle('active', b.dataset.view === savedView)
+  );
+
   renderAll();
 
   // Auto-refresh on start if feeds exist
