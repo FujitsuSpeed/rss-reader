@@ -34,7 +34,12 @@ function getSettings() {
     checkInterval: 3_600_000,
     notifications: false,
     showImages: true,
+    fontSize: 16,
   });
+}
+
+function applyFontSize(px) {
+  document.documentElement.style.setProperty('--reader-font-size', `${px}px`);
 }
 
 function saveSettings(s) { save(STORAGE.SETTINGS, s); }
@@ -704,10 +709,15 @@ function showSettingsModal() {
   document.getElementById('setting-interval').value = s.checkInterval;
   document.getElementById('setting-notifications').checked = s.notifications;
   document.getElementById('setting-images').checked = s.showImages ?? true;
+  const fs = s.fontSize ?? 16;
+  document.getElementById('setting-fontsize').value = fs;
+  document.getElementById('fontsize-display').textContent = `${fs}px`;
   document.getElementById('settings-modal').classList.add('visible');
 }
 
 function hideSettingsModal() {
+  // Restore font size in case user moved the slider but cancelled
+  applyFontSize(getSettings().fontSize ?? 16);
   document.getElementById('settings-modal').classList.remove('visible');
 }
 
@@ -792,10 +802,12 @@ async function applySettings() {
   }
 
   const showImages = document.getElementById('setting-images').checked;
+  const fontSize = +document.getElementById('setting-fontsize').value;
 
   document.getElementById('notif-error').textContent = '';
-  saveSettings({ theme, checkInterval: interval, notifications: notif, showImages });
+  saveSettings({ theme, checkInterval: interval, notifications: notif, showImages, fontSize });
   document.documentElement.setAttribute('data-theme', theme);
+  applyFontSize(fontSize);
   hideSettingsModal();
   syncSWConfig();
 
@@ -852,6 +864,13 @@ function bindEvents() {
     if (e.target === e.currentTarget) hideSettingsModal();
   });
   document.getElementById('btn-save-settings').addEventListener('click', applySettings);
+
+  // Font-size live preview while sliding
+  document.getElementById('setting-fontsize').addEventListener('input', e => {
+    const px = +e.target.value;
+    document.getElementById('fontsize-display').textContent = `${px}px`;
+    applyFontSize(px);
+  });
 
   // Beispiel-Feeds
   document.querySelectorAll('[data-example]').forEach(btn => {
@@ -968,8 +987,10 @@ async function registerSW() {
 // ── Init ──────────────────────────────────────────────────
 
 async function init() {
-  // Apply theme immediately to avoid flash
-  document.documentElement.setAttribute('data-theme', getSettings().theme);
+  // Apply persisted display settings immediately to avoid flash
+  const s0 = getSettings();
+  document.documentElement.setAttribute('data-theme', s0.theme);
+  applyFontSize(s0.fontSize ?? 16);
 
   await registerSW();
   bindEvents();

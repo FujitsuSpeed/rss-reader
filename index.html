@@ -231,6 +231,24 @@
 
       <div class="divider" style="margin:16px 0"></div>
 
+      <div class="form-group" style="margin-bottom:0">
+        <label for="setting-fontsize">
+          Schriftgröße (Lesemodus)
+          <span class="setting-badge" id="fontsize-display">16px</span>
+        </label>
+        <input type="range" id="setting-fontsize"
+               min="12" max="26" step="1" value="16"
+               aria-label="Schriftgröße in Pixel">
+        <div class="range-labels" aria-hidden="true">
+          <span style="font-size:.8rem">A</span>
+          <span style="font-size:1rem">A</span>
+          <span style="font-size:1.25rem">A</span>
+          <span style="font-size:1.5rem">A</span>
+        </div>
+      </div>
+
+      <div class="divider" style="margin:16px 0"></div>
+
       <div style="display:flex;flex-direction:column;gap:8px">
         <button class="btn btn-secondary btn-danger" id="btn-clear-articles">
           🗑 Alle Artikel löschen
